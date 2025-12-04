@@ -1,31 +1,58 @@
-// js/data/projectData.js
 import * as THREE from 'three';
 
 const ProjectData = {
     rootNode: null,
     nodes: new Map(),
-    selectedNodeIds: new Set(), // 支持多选
+    selectedNodeIds: new Set(),
     nextNodeId: 1,
+    
+    // --- 新增：历史记录栈 ---
+    historyStack: [],
+    currentStateIndex: -1,
 
     init: function() {
         this.nodes.clear();
         this.selectedNodeIds.clear();
         this.rootNode = null;
         this.nextNodeId = 1;
-        console.log("ProjectData initialized");
+        // 初始化时不清除 historyStack，除非显式重置，但为了简单，这里不自动清除
+    },
+
+    // --- 新增：保存当前状态快照 ---
+    saveState: function() {
+        const json = this.toJSON();
+        
+        // 如果当前不在历史记录末尾（比如撤销过），则丢弃未来的记录
+        if (this.currentStateIndex < this.historyStack.length - 1) {
+            this.historyStack = this.historyStack.slice(0, this.currentStateIndex + 1);
+        }
+        
+        this.historyStack.push(json);
+        this.currentStateIndex++;
+        
+        console.log(`状态已保存，当前步骤: ${this.currentStateIndex}`);
+        return this.currentStateIndex;
+    },
+
+    // --- 新增：恢复到指定步骤 ---
+    restoreState: function(index) {
+        if (index < 0 || index >= this.historyStack.length) return false;
+        
+        const json = this.historyStack[index];
+        this.loadJSON(json, false); // false 表示不清空历史栈
+        this.currentStateIndex = index;
+        return true;
     },
 
     generateNodeId: function() {
         return `node_${this.nextNodeId++}`;
     },
 
-    // 注册节点
     registerNode: function(node) {
         this.nodes.set(node.id, node);
         return node;
     },
 
-    // 添加基元
     addPrimitive: function(type) {
         const nodeId = this.generateNodeId();
         const node = {
@@ -45,18 +72,16 @@ const ProjectData = {
     addBox: function() { return this.addPrimitive('box'); },
     addSphere: function() { return this.addPrimitive('sphere'); },
 
-    // 布尔运算逻辑
     applyOperation: function(nodeIdA, nodeIdB, opType) {
         const nodeA = this.nodes.get(nodeIdA);
         const nodeB = this.nodes.get(nodeIdB);
-        
         if (!nodeA || !nodeB) return null;
 
         const newNodeId = this.generateNodeId();
         const opNode = {
             id: newNodeId,
             type: 'operation',
-            op: opType, // 'UNION', 'SUBTRACT', 'INTERSECT'
+            op: opType,
             left: nodeA,
             right: nodeB,
             transform: new THREE.Matrix4().toArray(),
@@ -64,7 +89,6 @@ const ProjectData = {
             isRoot: true
         };
 
-        // 原有节点不再是根节点
         nodeA.isRoot = false;
         nodeB.isRoot = false;
 
@@ -76,18 +100,15 @@ const ProjectData = {
         return this.nodes.get(nodeId);
     },
 
-    // --- 关键修复：补上了这个缺失的函数 ---
     selectNode: function(nodeId) {
         this.selectedNodeIds.add(nodeId);
         return this.getNode(nodeId);
     },
 
-    // 切换选中状态
     toggleSelection: function(nodeId) {
         if (this.selectedNodeIds.has(nodeId)) {
             this.selectedNodeIds.delete(nodeId);
         } else {
-            // 限制最多选两个
             if (this.selectedNodeIds.size >= 2) {
                 const first = this.selectedNodeIds.values().next().value;
                 this.selectedNodeIds.delete(first);
@@ -101,7 +122,6 @@ const ProjectData = {
         return Array.from(this.selectedNodeIds).map(id => this.nodes.get(id));
     },
 
-    // 导出
     toJSON: function() {
         const rootNodes = [];
         this.nodes.forEach(node => {
@@ -110,12 +130,17 @@ const ProjectData = {
         return JSON.stringify(rootNodes, null, 2);
     },
 
-    // 导入
-    loadJSON: function(jsonStr) {
+    loadJSON: function(jsonStr, clearHistory = true) {
         try {
             const data = JSON.parse(jsonStr);
-            this.init();
+            this.init(); // 清空当前节点 map
             
+            // 如果是导入文件，可能需要清空历史栈
+            if (clearHistory) {
+                this.historyStack = [];
+                this.currentStateIndex = -1;
+            }
+
             const registerRecursive = (node) => {
                 this.nodes.set(node.id, node);
                 const numId = parseInt(node.id.split('_')[1]);

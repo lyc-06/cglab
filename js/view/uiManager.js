@@ -1,14 +1,17 @@
-// js/view/uiManager.js
 import ProjectData from '../data/projectData.js';
 
 export default class UIManager {
     constructor() {
+        this.isPlaying = false;
+        this.playInterval = null;
         this.init();
     }
     
     init() {
         this.updateTreeView();
         this.bindEvents();
+        // 初始化时保存一个空状态
+        this.saveHistoryState(); 
     }
     
     bindEvents() {
@@ -19,15 +22,77 @@ export default class UIManager {
         document.getElementById('subtractBtn').onclick = () => this.doBoolean('SUBTRACT');
         document.getElementById('intersectBtn').onclick = () => this.doBoolean('INTERSECT');
         
-        // 文件操作
         document.getElementById('exportBtn').onclick = () => this.exportJSON();
         document.getElementById('importBtn').onclick = () => document.getElementById('fileInput').click();
         document.getElementById('fileInput').onchange = (e) => this.importJSON(e);
+
+        // --- 新增：播放控制 ---
+        const slider = document.getElementById('historySlider');
+        slider.oninput = (e) => this.onSliderChange(e.target.value);
+        
+        document.getElementById('playBtn').onclick = () => this.togglePlay();
+    }
+    
+    // --- 新增：保存历史并更新UI ---
+    saveHistoryState() {
+        const index = ProjectData.saveState();
+        this.updateHistoryUI(index);
+    }
+
+    updateHistoryUI(index) {
+        const slider = document.getElementById('historySlider');
+        const label = document.getElementById('stepLabel');
+        const max = ProjectData.historyStack.length - 1;
+        
+        slider.max = max;
+        slider.value = index;
+        label.textContent = `${index}/${max}`;
+    }
+
+    // --- 新增：进度条拖动 ---
+    onSliderChange(val) {
+        const index = parseInt(val);
+        ProjectData.restoreState(index);
+        this.refreshAll(false); // false 表示不需要再次保存历史
+        
+        document.getElementById('stepLabel').textContent = `${index}/${ProjectData.historyStack.length - 1}`;
+    }
+
+    // --- 新增：自动播放 ---
+    togglePlay() {
+        const btn = document.getElementById('playBtn');
+        if (this.isPlaying) {
+            this.isPlaying = false;
+            clearInterval(this.playInterval);
+            btn.textContent = "▶";
+        } else {
+            this.isPlaying = true;
+            btn.textContent = "⏸";
+            
+            // 如果已经在最后，从头开始
+            let current = parseInt(document.getElementById('historySlider').value);
+            if (current >= ProjectData.historyStack.length - 1) {
+                current = -1;
+            }
+            
+            this.playInterval = setInterval(() => {
+                current++;
+                if (current >= ProjectData.historyStack.length) {
+                    this.togglePlay(); // 结束
+                    return;
+                }
+                
+                // 更新 Slider 和场景
+                document.getElementById('historySlider').value = current;
+                this.onSliderChange(current);
+                
+            }, 500); // 每 500ms 播放一步
+        }
     }
     
     addPrimitive(type) {
         const node = type === 'box' ? ProjectData.addBox() : ProjectData.addSphere();
-        this.refreshAll();
+        this.refreshAll(true); // true = 保存历史
     }
     
     doBoolean(opType) {
@@ -39,14 +104,17 @@ export default class UIManager {
         
         const opNode = ProjectData.applyOperation(selected[0].id, selected[1].id, opType);
         if (opNode) {
-            // 清空选择
             ProjectData.selectedNodeIds.clear();
-            ProjectData.selectNode(opNode.id); // 只是为了高亮新节点
-            this.refreshAll();
+            ProjectData.selectNode(opNode.id);
+            this.refreshAll(true);
         }
     }
     
-    refreshAll() {
+    refreshAll(saveHistory = false) {
+        if (saveHistory) {
+            this.saveHistoryState();
+        }
+        
         this.updateTreeView();
         if (window.app && window.app.sceneManager) {
             window.app.sceneManager.rebuildScene();
@@ -57,13 +125,11 @@ export default class UIManager {
         const container = document.getElementById('csgTreeView');
         container.innerHTML = '';
         
-        // 递归渲染树的函数
         const renderNode = (node, level) => {
             const div = document.createElement('div');
             div.className = 'tree-node';
             div.style.marginLeft = (level * 20) + 'px';
             
-            // 选中样式
             if (ProjectData.selectedNodeIds.has(node.id)) {
                 div.classList.add('selected');
             }
@@ -72,13 +138,10 @@ export default class UIManager {
             div.innerHTML = `${icon} ${node.name || node.id}`;
             
             div.onclick = (e) => {
-                e.stopPropagation(); // 防止冒泡
-                const lastSelected = ProjectData.toggleSelection(node.id);
+                e.stopPropagation();
+                ProjectData.toggleSelection(node.id);
+                this.refreshAll(false); // 选中不保存历史
                 
-                // 更新UI
-                this.updateTreeView();
-                
-                // 通知 SceneManager
                 if (window.app.sceneManager) {
                     window.app.sceneManager.selectNodes(ProjectData.getSelectedNodes());
                 }
@@ -89,14 +152,12 @@ export default class UIManager {
             
             container.appendChild(div);
             
-            // 如果是操作节点，递归渲染子节点
             if (node.type === 'operation') {
                 renderNode(node.left, level + 1);
                 renderNode(node.right, level + 1);
             }
         };
 
-        // 只有 isRoot 的节点才作为顶层显示
         ProjectData.nodes.forEach(node => {
             if (node.isRoot) {
                 renderNode(node, 0);
@@ -104,7 +165,6 @@ export default class UIManager {
         });
     }
 
-    // 导出
     exportJSON() {
         const json = ProjectData.toJSON();
         const blob = new Blob([json], {type: "application/json"});
@@ -115,7 +175,6 @@ export default class UIManager {
         a.click();
     }
 
-    // 导入
     importJSON(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -123,7 +182,8 @@ export default class UIManager {
         reader.onload = (e) => {
             const success = ProjectData.loadJSON(e.target.result);
             if (success) {
-                this.refreshAll();
+                this.saveHistoryState(); // 导入后作为新的一步
+                this.refreshAll(false);
                 alert("加载成功！");
             }
         };
