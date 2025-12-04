@@ -1,105 +1,143 @@
-// 全局项目数据管理
+// js/data/projectData.js
+import * as THREE from 'three';
+
 const ProjectData = {
-    // 当前的CSG树根节点
     rootNode: null,
-    
-    // 当前选中的节点
-    selectedNode: null,
-    
-    // 节点ID计数器
-    nextNodeId: 1,
-    
-    // 所有节点的映射表，便于快速查找
     nodes: new Map(),
-    
-    // 初始化空的CSG树
+    selectedNodeIds: new Set(), // 支持多选
+    nextNodeId: 1,
+
     init: function() {
-        console.log("ProjectData initialized");
-        this.nextNodeId = 1;
         this.nodes.clear();
+        this.selectedNodeIds.clear();
+        this.rootNode = null;
+        this.nextNodeId = 1;
+        console.log("ProjectData initialized");
     },
-    
-    // 生成唯一节点ID
+
     generateNodeId: function() {
         return `node_${this.nextNodeId++}`;
     },
-    
-    // 添加立方体基元
-    addBox: function() {
+
+    // 注册节点
+    registerNode: function(node) {
+        this.nodes.set(node.id, node);
+        return node;
+    },
+
+    // 添加基元
+    addPrimitive: function(type) {
         const nodeId = this.generateNodeId();
-        
-        const boxNode = {
+        const node = {
             id: nodeId,
             type: 'primitive',
-            geometry: 'box',
-            params: { 
-                width: 1, 
-                height: 1, 
-                depth: 1 
-            },
-            transform: [
-                1, 0, 0, 0,
-                0, 1, 0, 0, 
-                0, 0, 1, 0,
-                0, 0, 0, 1  // 单位矩阵
-            ],
-            name: `立方体_${this.nextNodeId}`
+            geometry: type,
+            params: type === 'box' ? { width: 1, height: 1, depth: 1 } : { radius: 0.5 },
+            transform: new THREE.Matrix4().toArray(),
+            name: type === 'box' ? `立方体_${this.nextNodeId-1}` : `球体_${this.nextNodeId-1}`,
+            isRoot: true
         };
         
-        this.nodes.set(nodeId, boxNode);
-        
-        // 如果是第一个节点，设为根节点
-        if (!this.rootNode) {
-            this.rootNode = boxNode;
-        }
-        
-        console.log("添加立方体:", boxNode);
-        return boxNode;
+        this.registerNode(node);
+        return node;
     },
-    
-    // 添加球体基元
-    addSphere: function() {
-        const nodeId = this.generateNodeId();
+
+    addBox: function() { return this.addPrimitive('box'); },
+    addSphere: function() { return this.addPrimitive('sphere'); },
+
+    // 布尔运算逻辑
+    applyOperation: function(nodeIdA, nodeIdB, opType) {
+        const nodeA = this.nodes.get(nodeIdA);
+        const nodeB = this.nodes.get(nodeIdB);
         
-        const sphereNode = {
-            id: nodeId,
-            type: 'primitive', 
-            geometry: 'sphere',
-            params: { 
-                radius: 0.5 
-            },
-            transform: [
-                1, 0, 0, 0,
-                0, 1, 0, 0,
-                0, 0, 1, 0, 
-                0, 0, 0, 1  // 单位矩阵
-            ],
-            name: `球体_${this.nextNodeId}`
+        if (!nodeA || !nodeB) return null;
+
+        const newNodeId = this.generateNodeId();
+        const opNode = {
+            id: newNodeId,
+            type: 'operation',
+            op: opType, // 'UNION', 'SUBTRACT', 'INTERSECT'
+            left: nodeA,
+            right: nodeB,
+            transform: new THREE.Matrix4().toArray(),
+            name: `${opType}_${this.nextNodeId-1}`,
+            isRoot: true
         };
-        
-        this.nodes.set(nodeId, sphereNode);
-        
-        // 如果是第一个节点，设为根节点
-        if (!this.rootNode) {
-            this.rootNode = sphereNode;
-        }
-        
-        console.log("添加球体:", sphereNode);
-        return sphereNode;
+
+        // 原有节点不再是根节点
+        nodeA.isRoot = false;
+        nodeB.isRoot = false;
+
+        this.registerNode(opNode);
+        return opNode;
     },
-    
-    // 根据ID获取节点
+
     getNode: function(nodeId) {
         return this.nodes.get(nodeId);
     },
-    
-    // 选中节点
+
+    // --- 关键修复：补上了这个缺失的函数 ---
     selectNode: function(nodeId) {
-        this.selectedNode = this.getNode(nodeId);
-        console.log("选中节点:", this.selectedNode);
-        return this.selectedNode;
+        this.selectedNodeIds.add(nodeId);
+        return this.getNode(nodeId);
+    },
+
+    // 切换选中状态
+    toggleSelection: function(nodeId) {
+        if (this.selectedNodeIds.has(nodeId)) {
+            this.selectedNodeIds.delete(nodeId);
+        } else {
+            // 限制最多选两个
+            if (this.selectedNodeIds.size >= 2) {
+                const first = this.selectedNodeIds.values().next().value;
+                this.selectedNodeIds.delete(first);
+            }
+            this.selectedNodeIds.add(nodeId);
+        }
+        return this.getNode(nodeId);
+    },
+
+    getSelectedNodes: function() {
+        return Array.from(this.selectedNodeIds).map(id => this.nodes.get(id));
+    },
+
+    // 导出
+    toJSON: function() {
+        const rootNodes = [];
+        this.nodes.forEach(node => {
+            if (node.isRoot) rootNodes.push(node);
+        });
+        return JSON.stringify(rootNodes, null, 2);
+    },
+
+    // 导入
+    loadJSON: function(jsonStr) {
+        try {
+            const data = JSON.parse(jsonStr);
+            this.init();
+            
+            const registerRecursive = (node) => {
+                this.nodes.set(node.id, node);
+                const numId = parseInt(node.id.split('_')[1]);
+                if (numId >= this.nextNodeId) this.nextNodeId = numId + 1;
+
+                if (node.type === 'operation') {
+                    registerRecursive(node.left);
+                    registerRecursive(node.right);
+                }
+            };
+
+            data.forEach(rootNode => {
+                rootNode.isRoot = true;
+                registerRecursive(rootNode);
+            });
+            
+            return true;
+        } catch (e) {
+            console.error("加载JSON失败", e);
+            return false;
+        }
     }
 };
 
-// 初始化项目数据
-ProjectData.init();
+export default ProjectData;
