@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 3: 智能 CAD 原型</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="canvas-container">
+            <canvas id="threeCanvas"></canvas>
+        </div>
+
+        <div id="ui-panel">
+            <h2>🛠️ 智能建模控制台</h2>
+            
+            <div class="panel-section">
+                <h3>基础操作</h3>
+                <div class="toolbar">
+                    <button id="addBoxBtn">➕ 立方体</button>
+                    <button id="addSphereBtn">➕ 球体</button>
+                </div>
+                <div class="toolbar" style="margin-top: 10px;">
+                    <button id="unionBtn">∪ 并集</button>
+                    <button id="subtractBtn">− 差集</button>
+                    <button id="intersectBtn">∩ 交集</button>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <h3>💬 AI 指令输入</h3>
+                <div class="command-area">
+                    <input type="text" id="commandInput" 
+                           placeholder="输入指令 (例如: subtract sphere radius 0.8)">
+                    <div id="statusInfo" style="color: #888;">等待指令...</div>
+                </div>
+                <p class="hint">尝试输入: <i>add box</i> 或 <i>cut sphere radius 0.6</i></p>
+            </div>
+
+            <div class="panel-section">
+                <h3>历史记录</h3>
+                <div class="history-controls">
+                    <button id="playBtn">▶ 播放过程</button>
+                    <span id="stepLabel">0/0</span>
+                </div>
+                <input type="range" id="historySlider" min="0" max="0" value="0" step="1">
+            </div>
+            
+            <div class="panel-section" style="flex: 1; overflow: auto;">
+                <h3>CSG 结构树</h3>
+                <div id="csgTreeView"></div>
+            </div>
+
+            <div class="panel-section">
+                <button id="exportBtn">💾 导出 JSON</button>
+                <button id="importBtn">📂 导入 JSON</button>
+                <input type="file" id="fileInput" accept=".json" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/main.js"></script>
+</body>
+</html>

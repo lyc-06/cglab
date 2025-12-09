@@ -1,6 +1,6 @@
 // js/sceneManager.js
-import * as THREE from 'three';
-import { Brush, Evaluator, SUBTRACTION, ADDITION, INTERSECTION } from 'three-bvh-csg';
+import * as THREE from './three.module.js';
+import { Brush, Evaluator, SUBTRACTION, ADDITION, INTERSECTION } from './three-bvh-csg.js';
 // 路径修正：直接引用同级文件
 import ProjectData from './projectData.js';
 import TransformManager from './transformManager.js';
