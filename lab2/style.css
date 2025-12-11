@@ -36,12 +36,39 @@ body {
 }
 #threeCanvas { width: 100%; height: 100%; display: block; }
 
+/* 胶囊式悬浮标签 - Apple Vision Pro 风格 */
 .overlay-info {
     position: absolute;
-    top: 20px; left: 20px;
-    color: rgba(255,255,255,0.4);
+    top: 20px; 
+    left: 20px;
+    
+    /* 玻璃拟态核心样式 */
+    background: rgba(0, 0, 0, 0.3); /* 半透明黑底 */
+    backdrop-filter: blur(12px);    /* 核心：磨砂玻璃模糊 */
+    -webkit-backdrop-filter: blur(12px); /* Safari 兼容 */
+    border: 1px solid rgba(255, 255, 255, 0.1); /* 极细的内发光描边 */
+    border-radius: 20px; /* 圆润的胶囊形状 */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* 柔和阴影让它浮起来 */
+    
+    /* 内部文字布局 */
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px; /* 图标和文字的间距 */
+    
+    /* 字体样式 */
+    color: rgba(255, 255, 255, 0.9); /* 亮白色文字 */
+    font-size: 13px; 
+    font-weight: 500;
+    pointer-events: none; /* 让鼠标穿透，不影响旋转模型 */
+    user-select: none;
+    z-index: 20;
+}
+
+/* 标签内的图标颜色微调 */
+.overlay-info i {
+    color: rgba(255, 255, 255, 0.7);
     font-size: 12px;
-    pointer-events: none;
 }
 
 /* 侧边栏 */
